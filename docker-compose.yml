@@ -1,0 +1,49 @@
+services:
+  api:
+    build: .
+    container_name: ai-cs-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://ai_user:ai_password@postgres:5432/ai_cs
+      REDIS_URL: redis://redis:6379/0
+      CLOVA_API_KEY: ${CLOVA_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    depends_on:
+      - postgres
+      - redis
+
+  email-worker:
+    build: .
+    container_name: ai-cs-email-worker
+    command: ["python", "-m", "app.email_worker"]
+    environment:
+      API_URL: http://api:8000/tickets
+      SYNC_URL: http://api:8000/email/sync
+      IMAP_HOST: imap.gmail.com
+      IMAP_USER: ${IMAP_USER}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+      POLL_INTERVAL: "30"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16
+    container_name: ai-cs-postgres
+    environment:
+      POSTGRES_DB: ai_cs
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: ai-cs-redis
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
