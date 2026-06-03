@@ -7,8 +7,10 @@
 
 ## 1. 하드웨어(인프라) 아키텍처
 
-Ncloud VPC를 Public / Private Subnet으로 분리하고, 데이터 계층(DB·Redis)을 외부에서
-직접 접근할 수 없도록 Private Subnet에 격리한 3구역 구조.
+Ncloud VPC를 Public / Private Subnet으로 분리하고, 데이터 계층을 **Ncloud 관리형 서비스**
+(Cloud DB for PostgreSQL · Cloud DB for Redis)로 구성해 Private Subnet에 배치한 3구역 구조.
+앱 VM은 Public Subnet에 두고, 데이터 계층은 ACG(보안그룹)로 앱 VM에서만 접근 가능하도록
+격리하여 외부에서 직접 접근할 수 없다. 앱은 private 엔드포인트로만 연결한다.
 
 ```mermaid
 flowchart TB
@@ -26,9 +28,9 @@ flowchart TB
             EW["이메일 워커 VM<br/>IMAP 폴링 (30초)"]
             DASH["대시보드 서빙<br/>문의 폼 · 관제 대시보드"]
         end
-        subgraph PRI["Private Subnet (외부 직접 접근 불가)"]
-            PG[("PostgreSQL 16<br/>티켓·배정·응답·PII·비용")]
-            RD[("Redis 7<br/>캐시·큐·카운터")]
+        subgraph PRI["Private Subnet (외부 직접 접근 불가 · ACG 격리)"]
+            PG[("Cloud DB for PostgreSQL<br/>(관리형)<br/>티켓·배정·응답·PII·비용")]
+            RD[("Cloud DB for Redis<br/>(관리형)<br/>응답 캐시·실시간 비용 카운터")]
         end
     end
 
@@ -43,8 +45,8 @@ flowchart TB
     U2 -.수신.-> GMAIL
     LB --> API
     LB --> DASH
-    API --> PG
-    API --> RD
+    API -->|private 엔드포인트| PG
+    API -->|private 엔드포인트| RD
     DASH --> PG
     EW -->|IMAP 폴링| GMAIL
     EW -->|티켓 등록| API

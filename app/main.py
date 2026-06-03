@@ -5,6 +5,7 @@ from typing import List
 
 import httpx
 import psycopg2
+import redis
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -17,10 +18,49 @@ DATABASE_URL = os.getenv(
     "postgresql://ai_user:ai_password@postgres:5432/ai_cs",
 )
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+CACHE_TTL = int(os.getenv("CACHE_TTL", "86400"))  # 응답 캐시 24시간
+
 CLOVA_API_KEY = os.getenv("CLOVA_API_KEY", "")
 CLOVA_URL = "https://clovastudio.stream.ntruss.com/testapp/v1/chat-completions/HCX-003"
 CLOVA_COST_PER_CALL = int(os.getenv("CLOVA_COST_PER_CALL", "10"))
 COST_ALERT_THRESHOLD = int(os.getenv("COST_ALERT_THRESHOLD", "1000"))
+
+# Redis 클라이언트 — 연결 실패해도 앱이 죽지 않도록 모든 호출은 try/except로 감쌈
+try:
+    _redis = redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3)
+except Exception:
+    _redis = None
+
+
+def cache_get(category: str):
+    """카테고리 기반 응답 캐시 조회. 히트 시 draft 문자열, 미스/오류 시 None."""
+    if _redis is None:
+        return None
+    try:
+        return _redis.get(f"cache:{category}")
+    except Exception:
+        return None
+
+
+def cache_set(category: str, draft: str):
+    if _redis is None:
+        return
+    try:
+        _redis.setex(f"cache:{category}", CACHE_TTL, draft)
+    except Exception:
+        pass
+
+
+def redis_cost_incr(today: str, cost: int):
+    """실시간 비용 카운터 (PostgreSQL cost_daily가 소스오브트루스, Redis는 실시간 집계용)."""
+    if _redis is None:
+        return
+    try:
+        _redis.incr(f"cost:count:{today}")
+        _redis.incrby(f"cost:krw:{today}", cost)
+    except Exception:
+        pass
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -380,15 +420,24 @@ def create_ticket(request: TicketRequest):
         draft = build_template_draft(category, has_pii, urgency)
         send_telegram(f"🔒 [PII 감지] {request.channel} 채널 {','.join(pii_types)} 탐지 → 외부 차단 / 검토 필수")
     else:
-        clova_draft, latency_ms = call_clova(request.text, category, urgency)
-        if clova_draft:
-            backend = "clova"
-            draft = clova_draft
-            cost = CLOVA_COST_PER_CALL
+        # 긴급(HIGH) 문의는 캐시 사용 안 함 (전문 대응 필요) → 그 외에는 캐시 우선 조회
+        cached = cache_get(category) if urgency != "HIGH" else None
+        if cached:
+            backend = "cache"
+            draft = cached  # CLOVA 미호출 → 비용 ₩0
         else:
-            backend = "template-fallback"
-            draft = build_template_draft(category, has_pii, urgency)
-            send_telegram("🚨 [폴백] CLOVA 장애 → 템플릿 + 상담원 직접 처리 전환")
+            clova_draft, latency_ms = call_clova(request.text, category, urgency)
+            if clova_draft:
+                backend = "clova"
+                draft = clova_draft
+                cost = CLOVA_COST_PER_CALL
+                redis_cost_incr(time.strftime("%Y-%m-%d"), cost)
+                if urgency != "HIGH":
+                    cache_set(category, clova_draft)  # 다음 동일 카테고리 문의는 캐시 히트
+            else:
+                backend = "template-fallback"
+                draft = build_template_draft(category, has_pii, urgency)
+                send_telegram("🚨 [폴백] CLOVA 장애 → 템플릿 + 상담원 직접 처리 전환")
 
     if urgency == "HIGH":
         send_telegram(f"⚠️ [긴급] {category} 문의 → CLOVA 처리 / 시니어 배정 (채널: {request.channel})")
@@ -730,6 +779,7 @@ const QUEUE_NAMES = {
 };
 const BACKEND_NAMES = {
   'clova': 'AI 자동응답',
+  'cache': '캐시 응답',
   'template': '템플릿 응답',
   'template-fallback': '템플릿 (대체)',
 };
@@ -778,6 +828,11 @@ async function load() {
         <div class="label">AI 자동응답 비율</div>
         <div class="value">${clovaRate}%</div>
         <div class="sub">오늘 ${stats.today_clova_calls}회 · ₩${stats.today_clova_cost_krw}</div>
+      </div>
+      <div class="card">
+        <div class="label">캐시 처리 (비용 ₩0)</div>
+        <div class="value">${stats.by_backend.cache || 0}</div>
+        <div class="sub">동일 문의 재사용 건수</div>
       </div>
       <div class="card">
         <div class="label">상담원 확인 필요</div>
