@@ -5,12 +5,24 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # 데이터 계층은 Ncloud 관리형 서비스(Private Subnet). 값은 .env 에서 주입.
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      CLOVA_API_KEY: ${CLOVA_API_KEY}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      DATABASE_URL: postgresql://ai_user:ai_password@postgres:5432/ai_cs
+      REDIS_URL: redis://redis:6379/0
+      CLOVA_API_KEY: nv-cc38dae84043477b89d4665f765c1c82VkZ7
+      TELEGRAM_BOT_TOKEN: 8901565500:AAGbhAz4oS6QSDBVwVv5xFi1scXaSyfsLCA
+      TELEGRAM_CHAT_ID: 8982015953
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16
+    container_name: ai-cs-postgres
+    environment:
+      POSTGRES_DB: ai_cs
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   email-worker:
     build: .
@@ -18,10 +30,19 @@ services:
     command: ["python", "-m", "app.email_worker"]
     environment:
       API_URL: http://api:8000/tickets
-      SYNC_URL: http://api:8000/email/sync
       IMAP_HOST: imap.gmail.com
-      IMAP_USER: ${IMAP_USER}
-      IMAP_PASSWORD: ${IMAP_PASSWORD}
+      IMAP_USER: chohyerin03@gmail.com
+      IMAP_PASSWORD: bltghozkvmijgssm
       POLL_INTERVAL: "30"
     depends_on:
       - api
+
+  redis:
+    image: redis:7
+    container_name: ai-cs-redis
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
