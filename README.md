@@ -1,90 +1,146 @@
-# Customer Inquiry Dashboard — AI 문의 자동 분류·상담원 배정 시스템
+# Customer Inquiry Dashboard
 
-웹·이메일 문의를 통합 수집하고, 개인정보(PII)를 탐지해 외부 전송을 차단하며,
-CLOVA Studio API로 일반 문의 응답 초안을 생성하고, 긴급도에 따라 상담원 큐에
-자동 배정하는 클라우드 기반 민원 처리 관제 시스템.
+A privacy-aware customer-support intake and routing service. The application accepts customer inquiries from a web form or Gmail, detects personally identifiable information (PII), classifies urgency and category, creates a response draft with CLOVA Studio when it is safe to do so, and surfaces the result in an operations dashboard.
 
-📐 **[아키텍처 도식 (HW / SW / 시퀀스) 보기 →](docs/architecture.md)**
+## Why it exists
 
-## 핵심 기능
+Support teams need a fast first response without sending sensitive customer data to an external language-model service. This project puts a small policy gate in front of the AI workflow: inquiries that contain PII are masked, routed for human review, and receive a template response instead of an external AI call.
 
-- **멀티채널 수집** — 웹폼 + 이메일(IMAP 폴링) 2채널을 단일 파이프라인으로 통합
-- **PII 게이트** — 정규식으로 전화·이메일·주문번호·계좌 탐지 → 외부 차단 + 마스킹 저장
-- **규칙기반 분류** — 키워드 사전으로 카테고리·긴급도(HIGH/MEDIUM/LOW) 분류 (로컬 LLM 미사용)
-- **응답 생성** — PII 없는 일반 문의는 CLOVA Studio, PII 포함/장애 시 템플릿 응답
-- **서킷브레이커** — CLOVA 장애 시 자동 차단 + 템플릿 폴백
-- **상담원 자동 배정** — 긴급도·PII 여부 기반 큐 배정 (전문/전담/일반)
-- **비용 집계** — CLOVA 호출 누적 집계 + 임계치 초과 시 Telegram 알림
-- **관제 대시보드** — 채널별·긴급도별·PII·비용·서킷 상태 실시간 현황
-- **Telegram 알림** — PII 감지·긴급 클레임·폴백·비용 임계치 이벤트 알림
+## Highlights
 
-## 기술 스택
+- Ingests inquiries through the built-in web form and an IMAP/Gmail polling worker.
+- Detects email addresses, Korean mobile numbers, order IDs, and account-like identifiers.
+- Masks detected PII before persistence and prevents PII-containing text from reaching CLOVA Studio.
+- Classifies each request by category and urgency, then selects a senior, dedicated, priority, or general queue.
+- Generates AI response drafts for non-PII inquiries; falls back to a safe template if the AI service is unavailable.
+- Uses a circuit breaker to avoid repeated failed CLOVA requests.
+- Sends Telegram notifications for PII detection, high-priority tickets, cost thresholds, and AI fallbacks.
+- Provides a lightweight dashboard for ticket status, queue distribution, PII counts, AI usage, and daily cost.
 
-| 영역 | 기술 |
-|------|------|
-| 백엔드 | FastAPI + Uvicorn |
-| 리버스 프록시 | Nginx |
-| DB | PostgreSQL 16 |
-| 캐시/큐 | Redis 7 |
-| 응답 AI | CLOVA Studio API (HCX-003) |
-| 이메일 수집 | Python imaplib (IMAP 폴링) |
-| 알림 | Telegram Bot API |
-| 배포 | Docker Compose (Ncloud Ubuntu) |
+## Architecture
 
-## 구조
-
-```
-.
-├── app/
-│   ├── main.py           # FastAPI 앱 (API + 문의 폼 + 관제 대시보드)
-│   └── email_worker.py   # IMAP 폴링 워커 (이메일 수집 + 삭제 동기화)
-├── nginx/
-│   └── ai-cs-app.conf    # Nginx 리버스 프록시 설정
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-└── .env.example          # 환경변수 템플릿 (.env로 복사 후 값 입력)
+```text
+Web form ──┐
+           ├── FastAPI service ── PostgreSQL
+Gmail IMAP ┘          │              Redis
+                       ├── CLOVA Studio (non-PII only)
+                       └── Telegram alerts
 ```
 
-## 실행 방법
+The service stores tickets, assignments, response metadata, PII events, and daily AI-cost totals in PostgreSQL. Redis is included as a supporting cache/service dependency. Nginx can sit in front of the FastAPI application as a reverse proxy.
 
-1. 환경변수 설정
-   ```bash
-   cp .env.example .env
-   # .env 파일을 열어 CLOVA / Telegram / Gmail 값 입력
-   ```
+## Tech stack
 
-2. 컨테이너 빌드 및 실행
-   ```bash
-   docker compose up -d --build
-   ```
+| Area | Technology |
+| --- | --- |
+| API and UI | FastAPI, Uvicorn, server-rendered HTML/CSS/JavaScript |
+| Data | PostgreSQL 16, Redis 7 |
+| AI | CLOVA Studio HCX-003 |
+| Email intake | Python `imaplib` / Gmail IMAP |
+| Notifications | Telegram Bot API |
+| Deployment | Docker Compose, Nginx |
 
-3. Nginx 설정 (호스트에 직접 설치한 경우)
-   ```bash
-   cp nginx/ai-cs-app.conf /etc/nginx/sites-enabled/ai-cs-app
-   # server_name 을 실제 IP/도메인으로 수정
-   nginx -t && systemctl reload nginx
-   ```
+## Inquiry flow
 
-## 화면
+1. A customer submits a web inquiry or a worker polls a new Gmail message.
+2. The API detects PII and creates a masked version of the text when necessary.
+3. Keyword rules classify the ticket category and urgency.
+4. PII tickets use a template response and require review. Non-PII tickets request a CLOVA response draft when the circuit breaker is closed.
+5. The ticket is assigned to an appropriate support queue and recorded in PostgreSQL.
+6. The dashboard and Telegram alerts expose the operational result.
 
-- 고객 문의 폼: `http://<서버>/` 또는 `/form`
-- 관제 대시보드: `http://<서버>/dashboard`
+## Run locally
 
-## 주요 API
+### Prerequisites
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/tickets` | 문의 접수 (분류·PII·라우팅·배정 처리) |
-| GET | `/tickets` | 문의 목록 |
-| DELETE | `/tickets/{id}` | 문의 삭제 |
-| GET | `/assignments` | 상담원 배정 로그 |
-| GET | `/stats` | 통계 (대시보드용) |
-| GET | `/circuit-breaker` | 서킷브레이커 상태 |
-| POST | `/email/sync` | 이메일 삭제 동기화 (워커 전용) |
+- Docker and Docker Compose
+- A CLOVA Studio API key for AI response generation (optional for template-only fallback)
+- Gmail IMAP credentials if email ingestion is required
+- Telegram bot credentials if alerts are required
 
-## 보안 정책
+### Configure environment variables
 
-- PII 포함 문의: 원문 미저장, 마스킹 텍스트만 저장, 외부 API 전송 차단
-- DB·Redis는 Private Subnet 격리, 대시보드는 보안그룹 IP 화이트리스트로 접근 통제
-- 비밀정보(API 키·토큰·비밀번호)는 `.env`로 분리하며 저장소에 커밋하지 않음
+The current Compose file defines service variables inline. Before running this project outside a controlled local environment, replace those values with variable substitutions or a secret manager; use the following values as the configuration contract. Do not commit real credentials.
+
+```env
+DATABASE_URL=postgresql://ai_user:ai_password@postgres:5432/ai_cs
+REDIS_URL=redis://redis:6379/0
+
+CLOVA_API_KEY=replace-me
+CLOVA_COST_PER_CALL=10
+COST_ALERT_THRESHOLD=1000
+
+TELEGRAM_BOT_TOKEN=replace-me
+TELEGRAM_CHAT_ID=replace-me
+
+IMAP_HOST=imap.gmail.com
+IMAP_USER=your-address@gmail.com
+IMAP_PASSWORD=your-gmail-app-password
+POLL_INTERVAL=30
+API_URL=http://api:8000/tickets
+```
+
+### Start the services
+
+```bash
+docker compose up -d --build
+```
+
+Then open:
+
+- Customer inquiry form: `http://localhost:8000/` or `http://localhost:8000/form`
+- Operations dashboard: `http://localhost:8000/dashboard`
+- Health endpoint: `http://localhost:8000/health`
+
+To stop the stack:
+
+```bash
+docker compose down
+```
+
+## API overview
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service and circuit-breaker health |
+| `POST` | `/tickets` | Create and process a web or email inquiry |
+| `GET` | `/tickets` | List recent tickets |
+| `DELETE` | `/tickets/{ticket_id}` | Delete a ticket and related records |
+| `GET` | `/assignments` | View queue-assignment history |
+| `GET` | `/stats` | Dashboard statistics and AI-cost totals |
+| `POST` | `/email/sync` | Remove email tickets no longer present in the mailbox |
+| `POST` | `/tickets/{ticket_id}/send-response` | Send a reviewed draft through Telegram |
+| `GET` | `/circuit-breaker` | Inspect CLOVA circuit-breaker state |
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8000/tickets \
+  -H "Content-Type: application/json" \
+  -d '{"channel":"web","text":"My order has not arrived yet. Please check the delivery status."}'
+```
+
+## Project layout
+
+```text
+app/
+  main.py           # FastAPI routes, PII policy, routing, dashboard, and persistence
+  email_worker.py   # Containerized Gmail IMAP polling worker
+nginx/
+  ai-cs-app.conf    # Nginx reverse-proxy configuration
+docker-compose.yml  # API, worker, PostgreSQL, and Redis services
+Dockerfile          # Application image definition
+email_poller.py      # Standalone Gmail polling script
+response_endpoint.py # Reference snippet for a Telegram response endpoint
+```
+
+## Security notes
+
+- PII detection currently uses regular expressions. Treat it as a baseline policy layer and extend the patterns before production use.
+- PII-containing inquiries are masked and handled with a template response; the raw text is not sent to CLOVA Studio.
+- Keep API keys, bot tokens, database passwords, and Gmail app passwords in environment variables or a secret manager.
+- Restrict dashboard and database access at the network layer when deploying.
+
+## License
+
+No license has been specified for this project. Add one before distributing or reusing the code publicly.
