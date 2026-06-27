@@ -64,3 +64,4 @@ docker compose up --build   # http://localhost:8000
 | `TEST_QA.md` | 기능 QA 테스트 결과 |
 | `FUNCTION_TEST_PLAN.md` | 기능별 테스트 계획 |
 | `SERVER_RUNBOOK.md` | 서버 배포·운영 절차 (민감정보 제외) |
+| `OPERATIONS_REVIEW.md` | 오탐·폴백·상담원 연결 케이스를 점검하는 운영 리뷰 샘플 |
