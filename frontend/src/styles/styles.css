@@ -1,0 +1,82 @@
+/* Google Fonts로 Inter, JetBrains Mono 제공 (index.html에서 로드) */
+
+:root {
+  --blue:        #2563EB;
+  --blue-hover:  #1D4ED8;
+  --blue-press:  #1E40AF;
+  --blue-soft:   #EFF4FF;
+  --blue-softer: #F5F8FF;
+  --blue-ring:   rgba(37,99,235,.30);
+
+  --danger:      #DC2626;
+  --danger-soft: #FEF2F2;
+  --danger-line: #FECACA;
+  --warning:     #D97706;
+  --warning-soft:#FEF7EC;
+  --warning-line:#FDE3B0;
+  --success:     #16A34A;
+  --success-soft:#ECFDF3;
+  --success-line:#BBF7D0;
+
+  --ink:    #111827;
+  --body:   #374151;
+  --muted:  #6B7280;
+  --faint:  #9CA3AF;
+  --on-blue:#ffffff;
+
+  --canvas:   #F7F8FA;
+  --surface:  #ffffff;
+  --soft:     #F9FAFB;
+  --soft-2:   #F3F4F6;
+
+  --line:      #E5E7EB;
+  --line-soft: #F1F2F4;
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px; --s10:40px;
+
+  --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-pill:999px;
+
+  --sh-xs:0 1px 2px rgba(16,24,40,.05);
+  --sh-sm:0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04);
+  --sh-md:0 6px 18px rgba(16,24,40,.10);
+  --sh-lg:0 16px 40px rgba(16,24,40,.16);
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; padding:0; }
+body {
+  font-family:var(--font);
+  color:var(--body);
+  background:#E9EBEF;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+button, input, select, textarea { font-family:inherit; }
+h1,h2,h3,h4,p { margin:0; }
+a { color:inherit; }
+
+.t-display { font-size:24px; line-height:1.25; font-weight:700; letter-spacing:-.4px; color:var(--ink); }
+.t-h1   { font-size:20px; line-height:1.3; font-weight:700; letter-spacing:-.3px; color:var(--ink); }
+.t-h2   { font-size:16px; line-height:1.35; font-weight:600; color:var(--ink); }
+.t-h3   { font-size:14px; line-height:1.4; font-weight:600; color:var(--ink); }
+.t-body { font-size:14px; line-height:1.55; color:var(--body); }
+.t-sm   { font-size:13px; line-height:1.5; color:var(--body); }
+.t-label{ font-size:12px; line-height:1.4; font-weight:600; color:var(--muted); letter-spacing:.01em; }
+.t-cap  { font-size:12px; line-height:1.4; color:var(--muted); }
+.mono   { font-family:var(--mono); }
+.tnum   { font-variant-numeric:tabular-nums; }
+
+::selection { background:var(--blue-soft); }
+:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+.scroll::-webkit-scrollbar{ width:10px; height:10px; }
+.scroll::-webkit-scrollbar-thumb{ background:#D1D5DB; border-radius:99px; border:2px solid transparent; background-clip:padding-box; }
+.scroll::-webkit-scrollbar-thumb:hover{ background:#B9BFC9; background-clip:padding-box; }
+
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes pulse-dot { 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
